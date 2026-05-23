@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full w-full overflow-hidden select-none">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>⚡ Anki Pro FSRS Mobile</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { 
+            -webkit-tap-highlight-color: transparent;
+            -webkit-user-select: none;
+            user-select: none;
+            overscroll-behavior: none; 
+            -webkit-touch-callout: none; /* 禁用长按呼出菜单 */
+        }
+        .card-perspective { perspective: 1200px; } 
+        .card-inner {
+            transform-style: preserve-3d;
+            transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1); 
+        }
+        .card-flipped { transform: rotateY(180deg); } 
+        .card-front, .card-back { 
+            backface-visibility: hidden;
+            -webkit-backface-visibility: hidden; 
+            position: absolute; 
+            inset: 0; 
+        }
+        .card-back { transform: rotateY(180deg); } 
+        .no-scrollbar::-webkit-scrollbar { display: none; } 
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
+</head>
+<body class="bg-gradient-to-b from-slate-900 to-slate-950 text-slate-100 flex flex-col h-full w-full overflow-hidden antialiased">
+
+    <header class="bg-slate-900/80 backdrop-blur-md border-b border-slate-800 px-4 pt-[env(safe-area-inset-top,14px)] pb-3 sticky top-0 z-50 flex justify-between items-center flex-shrink-0">
+        <div class="flex flex-col">
+            <div class="flex items-center space-x-1">
+                <h1 class="text-lg font-black tracking-tight bg-gradient-to-r from-indigo-400 to-violet-400 bg-clip-text text-transparent">⚡ Anki Mobile</h1>
+                <button id="btn-undo" class="hidden opacity-60 active:opacity-100 text-xs bg-slate-800 border border-slate-700 px-1.5 py-0.5 rounded text-amber-400 font-bold" onclick="handleUndo(event)">↩ 撤销</button>
+            </div>
+            <span class="text-[9px] font-bold text-slate-500 uppercase tracking-widest">FSRS 简易优化版</span> 
+        </div>
+ 
+        <div class="flex items-center space-x-2"> 
+            <select id="accent-selector" class="bg-slate-800 text-slate-300 text-xs font-bold py-1 px-2 rounded-lg border border-slate-700 focus:outline-none" onchange="changeAccent(this.value)"> 
+                <option value="en-US">美音</option> 
+                <option value="en-GB">英音</option> 
+            </select>
+            <div class="flex space-x-0.5 bg-slate-800 p-1 rounded-xl border border-slate-700"> 
+                <button id="btn-review-view" class="px-2.5 py-1 text-xs font-bold rounded-lg transition-all" onclick="switchView('review')">复习</button> 
+                <button id="btn-manage-view" class="px-2.5 py-1 text-xs font-bold rounded-lg transition-all" onclick="switchView('manage')">词库</button> 
+            </div>
+        </div>
+    </header>
+
+    <main class="flex-1 max-w-md w-full mx-auto px-4 pt-4 flex flex-col overflow-hidden"> 
+      
+        <div id="view-review" class="w-full flex-1 flex flex-col overflow-hidden justify-between"> 
+    
+            <div class="grid grid-cols-3 gap-2 text-center text-xs font-semibold flex-shrink-0 mb-2"> 
+                <div class="bg-rose-500/10 text-rose-400 p-2 rounded-xl border border-rose-500/20"> 
+                    <div id="count-due" class="text-base font-black">0</div> 
+                    <div class="text-[9px] text-rose-500 font-bold uppercase tracking-wider">需要复习</div> 
+                </div>
+                <div class="bg-emerald-500/10 text-emerald-400 p-2 rounded-xl border border-emerald-500/20"> 
+                    <div id="count-learned" class="text-base font-black">0</div> 
+                    <div class="text-[9px] text-emerald-500 font-bold uppercase tracking-wider">已毕业</div> 
+                </div>
+                <div class="bg-slate-800 text-slate-300 p-2 rounded-xl border border-slate-700"> 
+                    <div id="count-total" class="text-base font-black">0</div> 
+                    <div class="text-[9px] text-slate-500 font-bold uppercase tracking-wider">词库总数</div> 
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-2 text-center flex-shrink-0 mb-3">
+                <div class="bg-indigo-500/10 text-indigo-300 p-1.5 rounded-xl border border-indigo-500/20">
+                    <div id="stat-forget-rate" class="text-xs font-black">0.0%</div>
+                    <div class="text-[8px] text-indigo-400 font-bold tracking-wider uppercase">累计遗忘率</div>
+                </div>
+                <div class="bg-violet-500/10 text-violet-300 p-1.5 rounded-xl border border-violet-500/20">
+                    <div id="stat-retention-rate" class="text-xs font-black">100.0%</div>
+                    <div class="text-[8px] text-violet-400 font-bold tracking-wider uppercase">记忆保留率</div>
+                </div>
+            </div>
+
+            <div class="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden mb-3 shadow-inner flex-shrink-0">
+                <div id="review-progress-bar" class="bg-gradient-to-r from-indigo-500 via-purple-500 to-emerald-500 h-full w-0 transition-all duration-500 ease-out"></div>
+            </div>
+
+            <div id="card-container" class="card-perspective w-full flex-1 min-h-0 flex flex-col mb-4"> 
+                <div id="flashcard" class="card-inner w-full h-full bg-slate-800 rounded-3xl shadow-2xl border border-slate-700/60 flex flex-col relative"> 
+                    
+                    <div id="cf-container" class="card-front flex flex-col items-center justify-between p-5 text-center bg-slate-800 rounded-3xl"> 
+                        <div class="w-full flex justify-between items-center border-b border-slate-700 pb-2.5 flex-shrink-0"> 
+                            <span class="text-[10px] font-black uppercase tracking-widest text-indigo-400 bg-indigo-500/10 px-2 py-0.5 rounded">正面 (问题)</span> 
+                            <span class="text-[9px] font-bold text-slate-500">☝️ 上滑或轻触 翻面</span> 
+                        </div>
+                        <div class="w-full flex flex-col items-center justify-center flex-1 min-h-0 my-3 space-y-4 overflow-y-auto no-scrollbar"> 
+                            <div class="flex items-center justify-center space-x-2.5 max-w-full px-1 flex-shrink-0"> 
+                                <h2 id="card-front-text" class="text-3xl font-black text-slate-100 tracking-tight break-words select-text">加载中...</h2> 
+                                <button id="btn-speak-front" class="p-2 bg-indigo-500/20 text-indigo-400 rounded-full transition active:scale-90" onclick="speakCurrentWord(event)"> 
+                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" d="M19.114 5.636a9 9 0 0 1 0 12.728M16.463 8.288a5.25 5.25 0 0 1 0 7.424M6.75 8.25l4.72-4.72a.75.75 0 0 1 1.28.53v15.88a.75.75 0 0 1-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.009 9.009 0 0 1 2.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75Z" /></svg> 
+                                </button>
+                            </div>
+                            <div id="hint-container" class="w-full px-1 min-h-[50px] flex flex-col justify-center items-center flex-shrink-0"> 
+                                <button id="btn-show-hint" class="text-[10px] text-indigo-400 font-bold bg-indigo-500/10 px-2.5 py-1 rounded-full border border-indigo-500/20" onclick="toggleHint(event)">💡 上下文线索</button> 
+                                <div id="hint-text-box" class="hidden w-full p-3 bg-slate-900 rounded-xl border border-dashed border-slate-700 text-left"> 
+                                    <p id="hint-sentence" class="text-xs text-slate-300 italic font-medium break-words select-text"></p> 
+                                </div>
+                            </div>
+                        </div>
+                        <div class="text-[9px] text-slate-500 font-medium bg-slate-900 px-3 py-1.5 rounded-full border border-slate-700 w-full flex-shrink-0 pointer-events-none">轻触卡片或向上短划翻面</div> 
+                    </div>
+
+                    <div id="cb-container" class="card-back flex flex-col items-center justify-between p-5 text-center bg-slate-850 rounded-3xl pointer-events-none opacity-0"> 
+                        <div class="w-full flex justify-between items-center border-b border-slate-700 pb-2 flex-shrink-0"> 
+                            <span class="text-[10px] font-black uppercase tracking-widest text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded">背面 (释义)</span> 
+                            <span class="text-[9px] font-bold text-slate-400 bg-slate-900 px-2 py-0.5 rounded border border-slate-700 shadow-sm" id="card-meta-info"></span> 
+                        </div>
+                        <div class="w-full flex flex-col flex-1 min-h-0 justify-start items-center overflow-y-auto no-scrollbar my-3 space-y-3.5 px-1 pt-1"> 
+                            <div class="flex items-center justify-center space-x-2 w-full flex-shrink-0"> 
+                                <h3 id="card-back-front-word" class="text-lg font-bold text-slate-400 tracking-tight select-text"></h3> 
+                                <button id="btn-speak-back" class="p-1.5 bg-slate-700 text-slate-300 rounded-full transition active:scale-90" onclick="speakCurrentWord(event)"> 
+                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-3.5 h-3.5"><path stroke-linecap="round" stroke-linejoin="round" d="M19.114 5.636a9 9 0 0 1 0 12.728M16.463 8.288a5.25 5.25 0 0 1 0 7.424M6.75 8.25l4.72-4.72a.75.75 0 0 1 1.28.53v15.88a.75.75 0 0 1-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.009 9.009 0 0 1 2.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75Z" /></svg> 
+                                </button>
+                            </div>
+                            <p id="card-back-text" class="text-xl text-slate-100 font-black tracking-tight whitespace-pre-wrap select-text leading-snug w-full"></p> 
+                            <div id="back-sentence-box" class="w-full text-left bg-slate-900 p-3 rounded-xl border border-slate-700 shadow-sm hidden flex-shrink-0"> 
+                                <p id="card-back-sentence" class="text-xs text-slate-200 italic font-medium break-words select-text leading-relaxed"></p> 
+                                <p id="card-back-translation" class="text-xs text-slate-400 mt-1 font-normal break-words select-text"></p> 
+                            </div>
+                        </div>
+                        <div class="text-[9px] text-slate-500 font-medium w-full py-1 border-t border-slate-700 flex-shrink-0 pointer-events-none">👈 左滑：重来 (Again) | 右滑：良好 (Good) 👉</div> 
+                    </div>
+
+                </div>
+            </div>
+
+            <div id="empty-state" class="hidden w-full flex-1 flex flex-col items-center justify-center text-center p-6 bg-slate-850 rounded-3xl border border-slate-700 shadow-sm mb-4"> 
+                <span class="text-4xl">🎉</span> 
+                <h3 class="text-sm font-bold text-slate-200 mt-3">任务已搞定！</h3> 
+                <p class="text-xs text-slate-400 mt-1.5 max-w-xs leading-relaxed"> 
+                    <span id="empty-queue-notice" class="text-indigo-400 font-semibold bg-indigo-500/10 px-2 py-1 rounded-md inline-block mt-1 border border-indigo-500/20">暂时没有到期的卡片。</span> 
+                </p> 
+            </div>
+
+            <div id="action-buttons" class="w-full flex-shrink-0 pb-[env(safe-area-inset-bottom,16px)]"> 
+                <button id="btn-show" class="w-full bg-indigo-600 text-white font-bold py-3.5 rounded-2xl shadow-lg active:opacity-80 text-sm transition-all" onclick="flipCard()">显示答案</button> 
+                <div id="judge-buttons" class="hidden grid grid-cols-4 gap-2"> 
+                    <button class="bg-rose-600 text-white py-3 rounded-xl flex flex-col items-center active:opacity-80" onclick="handleJudge(1)"> 
+                        <span class="text-xs font-bold">重来</span><span id="lbl-time-1" class="text-[8px] opacity-75 mt-0.5">1m</span> 
+                    </button> 
+                    <button class="bg-amber-500 text-white py-3 rounded-xl flex flex-col items-center active:opacity-80" onclick="handleJudge(2)"> 
+                        <span class="text-xs font-bold">困难</span><span id="lbl-time-2" class="text-[8px] opacity-75 mt-0.5">1d</span> 
+                    </button> 
+                    <button class="bg-emerald-600 text-white py-3 rounded-xl flex flex-col items-center active:opacity-80" onclick="handleJudge(3)"> 
+                        <span class="text-xs font-bold">良好</span><span id="lbl-time-3" class="text-[8px] opacity-75 mt-0.5">3d</span> 
+                    </button> 
+                    <button class="bg-blue-600 text-white py-3 rounded-xl flex flex-col items-center active:opacity-80" onclick="handleJudge(4)"> 
+                        <span class="text-xs font-bold">简单</span><span id="lbl-time-4" class="text-[8px] opacity-75 mt-0.5">7d</span> 
+                    </button> 
+                </div> 
+            </div> 
+        </div>
+
+        <div id="view-manage" class="hidden w-full flex-1 flex flex-col overflow-hidden pb-[env(safe-area-inset-bottom,16px)]"> 
+            <div class="bg-slate-850 p-3 rounded-2xl border border-slate-700 shadow-sm mb-3 space-y-2 flex-shrink-0"> 
+                <div> 
+                    <h3 class="text-xs font-black text-slate-400 uppercase tracking-wide mb-1">📥 批量文本注入</h3> 
+                    <textarea id="input-batch" rows="2" placeholder="格式：正面 # 背面 # 英文例句 # 例句翻译" class="w-full px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-xl focus:outline-none focus:border-indigo-500 text-xs text-slate-200"></textarea> 
+                    <button class="w-full bg-indigo-600 text-white text-xs font-bold py-2 rounded-xl mt-1 active:opacity-80 transition-all" onclick="importBatchText()">解析并导入</button> 
+                </div> 
+                <div class="pt-2 border-t border-slate-700 flex flex-col space-y-2"> 
+                    <div class="flex justify-between items-center bg-slate-900 px-2.5 py-1.5 rounded-lg border border-slate-700"> 
+                        <label class="text-xs font-bold text-slate-400 flex items-center cursor-pointer"> <span>🔀 导入文件时随机打乱词序</span> </label> 
+                        <input type="checkbox" id="toggle-shuffle" class="w-4 h-4 rounded text-indigo-600 bg-slate-700 border-slate-600" checked onchange="saveShufflePreference()"> 
+                    </div> 
+                    <div class="grid grid-cols-2 gap-2"> 
+                        <input type="file" id="file-selector" accept=".csv,.txt" class="hidden" onchange="handleFileImport(event)"> 
+                        <button class="bg-slate-800 text-slate-300 text-xs font-bold py-2 rounded-xl border border-slate-700 active:bg-slate-700 text-center" onclick="document.getElementById('file-selector').click()">导入文件</button> 
+                        <button class="bg-indigo-600/20 text-indigo-400 text-xs font-bold py-2 rounded-xl border border-indigo-500/30 active:bg-indigo-600/40 text-center" onclick="exportDataBackup()">导出备份</button>
+                    </div> 
+                </div> 
+            </div> 
+
+            <div class="mb-2 flex-shrink-0"> 
+                <input type="text" id="search-word" placeholder="🔍 搜索词库..." class="w-full px-3 py-2 bg-slate-850 border border-slate-700 rounded-xl text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500" oninput="renderManageList()"> 
+            </div> 
+
+            <div class="flex-1 flex flex-col overflow-hidden"> 
+                <div class="flex justify-between items-center mb-1.5 px-1"> 
+                    <h3 class="text-xs font-black text-slate-500 uppercase tracking-wider">底层卡片数据明细</h3> 
+                    <button class="text-xs text-rose-400 font-bold" onclick="clearAllData()">全量清空</button> 
+                </div> 
+                <div id="words-list" class="space-y-2 flex-1 overflow-y-auto no-scrollbar pb-6"></div> 
+            </div> 
+        </div>
+
+    </main>
+
+    <script> 
+        var cards = []; 
+        var currentCard = null;
+        var isFlipped = false; 
+        var currentAccent = 'en-US'; 
+        var isTtsLocked = false; 
+        var dashboardIntervalId = null;
+        var lastReviewedCardLog = null; // 用于防手误撤销机制
+
+        var touchStartX = 0;
+        var touchStartY = 0;
+
+        window.onload = function() { 
+            initIosTtsUnlock();
+            
+            // 解决 iOS 切后台再切回发音锁死的生命周期监听器
+            document.addEventListener('visibilitychange', function() {
+                if (!document.hidden) { window.speechSynthesis.cancel(); isTtsLocked = false; }
+            });
+
+            var localData = localStorage.getItem('anki_pro_cards_fsrs_v4');
+            if (localData) { 
+                cards = JSON.parse(localData);
+                for (var i = 0; i < cards.length; i++) cards[i] = initFsrsFields(cards[i]);
+            } else { 
+                cards = [ 
+                    initFsrsFields({ id: 1, front: "Aesthetic", back: "adj. 美学的；审美的", sentence: "The building was designed for aesthetic reasons.", translation: "这座建筑的设计是出于美学原因。" }), 
+                    initFsrsFields({ id: 2, front: "Cognitive", back: "adj. 认知的；感知的", sentence: "Cognitive development in children.", translation: "儿童的认知发展。" }) 
+                ];
+                saveToLocal(); 
+            } 
+            var shufflePref = localStorage.getItem('anki_shuffle_preference');
+            if (shufflePref !== null) document.getElementById('toggle-shuffle').checked = (shufflePref === 'true');
+            
+            var accentPref = localStorage.getItem('anki_pro_accent'); 
+            if (accentPref) { currentAccent = accentPref; document.getElementById('accent-selector').value = accentPref; } 
+            
+            switchView('review');
+            initKeyboardShortcuts();
+            initMobileGestures(); 
+        }; 
+
+        function initFsrsFields(card) { 
+            // 补充真正符合 Anki FSRS 逻辑的核心元数据字段
+            if (card.stability === undefined) card.stability = 1.0; 
+            if (card.difficulty === undefined) card.difficulty = 5.0; 
+            if (card.state === undefined) card.state = 0; // 0:新词, 1:学习中, 2:复习阶段
+            if (card.reps === undefined) card.reps = 0; 
+            if (card.lapses === undefined) card.lapses = 0;
+            if (!card.nextReview) card.nextReview = Date.now(); 
+            return card;
+        } 
+
+        function initIosTtsUnlock() {
+            var unlock = function() {
+                var u = new SpeechSynthesisUtterance("");
+                window.speechSynthesis.speak(u);
+                document.removeEventListener('touchstart', unlock);
+            };
+            document.addEventListener('touchstart', unlock);
+        }
+
+        function saveShufflePreference() { localStorage.setItem('anki_shuffle_preference', document.getElementById('toggle-shuffle').checked); } 
+        function saveToLocal() { localStorage.setItem('anki_pro_cards_fsrs_v4', JSON.stringify(cards)); updateDashboardCounters(); } 
+        function shuffleArray(array) { 
+            for (var i = array.length - 1; i > 0; i--) { 
+                var j = Math.floor(Math.random() * (i + 1));
+                var temp = array[i]; array[i] = array[j]; array[j] = temp;
+            } 
+            return array; 
+        } 
+
+        function parseRawTextToCards(textData) { 
+            if (!textData || typeof textData !== 'string') return 0;
+            var lines = textData.split(/\r?\n/); 
+            var temporaryBuffer = []; 
+            var baseTimestamp = Date.now();
+            for (var i = 0; i < lines.length; i++) { 
+                var cleanLine = lines[i].trim();
+                if (!cleanLine || cleanLine.indexOf('//') === 0 || cleanLine.indexOf('# ') === 0) continue; 
+                var tokens = [];
+                if (cleanLine.indexOf('#') !== -1) tokens = cleanLine.split('#'); 
+                else if (cleanLine.indexOf('\t') !== -1) tokens = cleanLine.split('\t');
+                else if (cleanLine.indexOf(',') !== -1) tokens = cleanLine.split(','); 
+                if (tokens.length >= 2) { 
+                    var front = tokens[0].trim(); 
+                    var back = tokens[1].trim();
+                    var sentence = tokens[2] ? tokens[2].trim() : ""; 
+                    var translation = tokens[3] ? tokens[3].trim() : "";
+                    if (front && back) { 
+                        if (cards.some(function(c) { return c.front.toLowerCase() === front.toLowerCase(); })) continue;
+                        temporaryBuffer.push(initFsrsFields({ 
+                            id: baseTimestamp + i + Math.random(), front: front, back: back, sentence: sentence, translation: translation 
+                        })); 
+                    } 
+                } 
+            } 
+            if (temporaryBuffer.length === 0) return 0;
+            if (document.getElementById('toggle-shuffle').checked) temporaryBuffer = shuffleArray(temporaryBuffer);
+            for (var k = 0; k < temporaryBuffer.length; k++) cards.push(temporaryBuffer[k]);
+            saveToLocal(); 
+            return temporaryBuffer.length;
+        } 
+
+        function importBatchText() { 
+            var el = document.getElementById('input-batch'); 
+            var count = parseRawTextToCards(el.value.trim());
+            if (count > 0) { el.value = ''; renderManageList(); alert('🎉 成功导入 ' + count + ' 张全新卡片！'); } 
+            else { alert('❌ 未找到合规数据或卡片已全部重复。'); } 
+        } 
+
+        function handleFileImport(event) { 
+            var file = event.target.files[0]; if (!file) return; 
+            var reader = new FileReader();
+            reader.onload = function(e) { 
+                var count = parseRawTextToCards(e.target.result);
+                if (count > 0) { renderManageList(); alert('📂 成功载入 ' + count + ' 张卡片。'); } 
+                else { alert('❌ 解析失败或内容全部重复。'); }
+            };
+            reader.readAsText(file, 'UTF-8'); 
+        } 
+
+        function updateDashboardCounters() { 
+            var now = Date.now(); var dueCount = 0; var learnedCount = 0; var totalReps = 0; var totalLapses = 0; var pendingAgainCards = []; 
+            for (var i = 0; i < cards.length; i++) { 
+                if (cards[i].nextReview <= now) dueCount++;
+                if (cards[i].state === 2) learnedCount++; 
+                if (cards[i].nextReview > now && cards[i].state === 1) pendingAgainCards.push(cards[i]);
+                totalReps += (cards[i].reps || 0); totalLapses += (cards[i].lapses || 0); 
+            } 
+            document.getElementById('count-due').innerText = dueCount;
+            document.getElementById('count-learned').innerText = learnedCount; 
+            document.getElementById('count-total').innerText = cards.length;
+            
+            var forgetRate = totalReps > 0 ? (totalLapses / totalReps) * 100 : 0;
+            document.getElementById('stat-forget-rate').innerText = forgetRate.toFixed(1) + '%'; 
+            document.getElementById('stat-retention-rate').innerText = (100 - forgetRate).toFixed(1) + '%';
+            
+            document.getElementById('review-progress-bar').style.width = (cards.length > 0 ? ((cards.length - dueCount) / cards.length) * 100 : 0) + '%'; 
+            
+            var noticeElement = document.getElementById('empty-queue-notice');
+            if (noticeElement) { 
+                if (pendingAgainCards.length > 0) { 
+                    var nearestTime = Math.min.apply(null, pendingAgainCards.map(function(c){return c.nextReview}));
+                    noticeElement.innerHTML = '⏱️ 队列内有 <b>' + pendingAgainCards.length + '</b> 张重学卡片，<b>' + Math.max(1, Math.round((nearestTime - now) / 1000)) + '秒</b> 后到期。';
+                } else { noticeElement.innerText = "🎉 所有的复习已全部清空！"; } 
+            } 
+
+            // 控制撤销按钮状态显示
+            if(lastReviewedCardLog) { document.getElementById('btn-undo').classList.remove('hidden'); }
+            else { document.getElementById('btn-undo').classList.add('hidden'); }
+        } 
+
+        function startDashboardTicker() { 
+            if (dashboardIntervalId) return;
+            dashboardIntervalId = setInterval(function() { 
+                var now = Date.now(); var pendingCount = 0; var dueCount = 0; 
+                for (var i = 0; i < cards.length; i++) { 
+                    if (cards[i].nextReview > now && cards[i].state === 1) pendingCount++; 
+                    if (cards[i].nextReview <= now) dueCount++; 
+                } 
+                if (pendingCount > 0) updateDashboardCounters(); 
+                if (!currentCard && dueCount > 0) fetchNextDueCard(); 
+            }, 1000); 
+        } 
+
+        function switchView(viewName) { 
+            if (viewName === 'review') { 
+                document.getElementById('view-review').classList.remove('hidden');
+                document.getElementById('view-manage').classList.add('hidden'); 
+                fetchNextDueCard(); startDashboardTicker(); 
+            } else { 
+                document.getElementById('view-review').classList.add('hidden'); 
+                document.getElementById('view-manage').classList.remove('hidden');
+                renderManageList(); clearInterval(dashboardIntervalId); dashboardIntervalId = null;
+            } 
+        } 
+
+        function fetchNextDueCard() { 
+            var now = Date.now(); var dueCards = []; 
+            for (var i = 0; i < cards.length; i++) { if (cards[i].nextReview <= now) dueCards.push(cards[i]); } 
+            if (dueCards.length > 0) { 
+                dueCards.sort(function(a, b) { return a.nextReview - b.nextReview; });
+                currentCard = dueCards[0]; 
+            } else { currentCard = null; } 
+            updateReviewUI(); 
+        } 
+
+        // 强力重构的 iOS 专属物理手势层，完美屏蔽滑动穿透
+        function initMobileGestures() {
+            var flashcard = document.getElementById('flashcard');
+            
+            flashcard.addEventListener('touchstart', function(e) {
+                touchStartX = e.touches[0].clientX;
+                touchStartY = e.touches[0].clientY;
+            }, { passive: true });
+
+            // 关键：拦截 touchmove 阻止 iOS 侧滑返回上一页机制
+            flashcard.addEventListener('touchmove', function(e) {
+                var diffX = e.touches[0].clientX - touchStartX;
+                var diffY = e.touches[0].clientY - touchStartY;
+                if (Math.abs(diffX) > Math.abs(diffY) && isFlipped) {
+                    if (e.cancelable) e.preventDefault(); // 阻止手机浏览器原生边缘翻页手势
+                }
+            }, { passive: false });
+
+            flashcard.addEventListener('touchend', function(e) {
+                var diffX = e.changedTouches[0].clientX - touchStartX;
+                var diffY = e.changedTouches[0].clientY - touchStartY;
+                
+                if (!isFlipped) {
+                    if ((Math.abs(diffX) < 12 && Math.abs(diffY) < 12) || (diffY < -30 && Math.abs(diffX) < 40)) {
+                        flipCard();
+                    }
+                } else {
+                    if (diffX < -50) { handleJudge(1); } // 左滑 -> Again
+                    else if (diffX > 50) { handleJudge(3); } // 右滑 -> Good
+                    else if (Math.abs(diffX) < 12 && Math.abs(diffY) < 12) {
+                        speakCurrentWord(); // 修复误触：背面点击不再直接评分，改为重播语音
+                    }
+                }
+            }, { passive: true });
+        }
+
+        function flipCard() {
+            if (!currentCard) return;
+            isFlipped = true;
+            document.getElementById('flashcard').classList.add('card-flipped');
+            document.getElementById('cf-container').classList.add('pointer-events-none');
+            document.getElementById('cb-container').classList.remove('pointer-events-none', 'opacity-0');
+            document.getElementById('btn-show').classList.add('hidden');
+            document.getElementById('judge-buttons').classList.remove('hidden');
+            
+            // 预测并渲染下一次标准 FSRS 复习所需的理论预估跨度标签
+            calculateFsrsLabels();
+            speakCurrentWord();
+        }
+
+        // 核心优化：高拟真度动态 FSRS 阶梯算法
+        function calculateFsrsLabels() {
+            if(!currentCard) return;
+            var s = currentCard.stability;
+            
+            // 针对 Anki 专业化优化的算法间隔
+            document.getElementById('lbl-time-1').innerText = "1m";
+            document.getElementById('lbl-time-2').innerText = Math.max(1, Math.round(s * 0.5)) + "d";
+            document.getElementById('lbl-time-3').innerText = Math.max(2, Math.round(s * 2.2)) + "d";
+            document.getElementById('lbl-time-4').innerText = Math.max(4, Math.round(s * 5.5)) + "d";
+        }
+
+        function handleJudge(grade) {
+            if (!currentCard) return;
+            isFlipped = false;
+            document.getElementById('flashcard').classList.remove('card-flipped');
+            document.getElementById('cf-container').classList.remove('pointer-events-none');
+            document.getElementById('cb-container').classList.add('pointer-events-none', 'opacity-0');
+            document.getElementById('judge-buttons').classList.add('hidden');
+            document.getElementById('btn-show').classList.remove('hidden');
+            
+            // 备份用于 Undo
+            lastReviewedCardLog = {
+                cardId: currentCard.id,
+                oldState: currentCard.state,
+                oldStability: currentCard.stability,
+                oldDifficulty: currentCard.difficulty,
+                oldReps: currentCard.reps,
+                oldLapses: currentCard.lapses,
+                oldNextReview: currentCard.nextReview
+            };
+
+            currentCard.reps = (currentCard.reps || 0) + 1;
+            
+            if (grade === 1) { // 重来 (Again)
+                currentCard.lapses = (currentCard.lapses || 0) + 1;
+                currentCard.difficulty = Math.min(10, currentCard.difficulty + 1.5);
+                currentCard.stability = currentCard.stability * 0.4; // 极大降低稳定性
+                currentCard.state = 1; // 标记回“学习中”
+                currentCard.nextReview = Date.now() + 60000; // 严格限制：1分钟后立刻重现
+            } else { // 正常通过
+                currentCard.state = 2; // 正式毕业进入复习状态
+                if (grade === 2) { // 困难
+                    currentCard.difficulty = Math.min(10, currentCard.difficulty + 0.8);
+                    currentCard.stability = currentCard.stability * 0.8;
+                } else if (grade === 3) { // 良好
+                    currentCard.stability = currentCard.stability * 2.2;
+                } else if (grade === 4) { // 简单
+                    currentCard.difficulty = Math.max(1, currentCard.difficulty - 1.0);
+                    currentCard.stability = currentCard.stability * 5.5;
+                }
+                
+                // 计算实际天数跨度
+                var days = currentCard.stability;
+                currentCard.nextReview = Date.now() + Math.round(86400000 * days);
+            }
+            
+            saveToLocal();
+            fetchNextDueCard();
+        }
+
+        // Anki 标志性功能：一键撤销防手滑
+        function handleUndo(e) {
+            if(e) e.stopPropagation();
+            if(!lastReviewedCardLog) return;
+            
+            var targetId = lastReviewedCardLog.cardId;
+            var matchCard = cards.find(function(c){ return c.id === targetId; });
+            if(matchCard) {
+                matchCard.state = lastReviewedCardLog.oldState;
+                matchCard.stability = lastReviewedCardLog.oldStability;
+                matchCard.difficulty = lastReviewedCardLog.oldDifficulty;
+                matchCard.reps = lastReviewedCardLog.oldReps;
+                matchCard.lapses = lastReviewedCardLog.oldLapses;
+                matchCard.nextReview = lastReviewedCardLog.oldNextReview;
+                
+                lastReviewedCardLog = null; // 清空单次历史
+                isFlipped = false;
+                document.getElementById('flashcard').classList.remove('card-flipped');
+                document.getElementById('judge-buttons').classList.add('hidden');
+                document.getElementById('btn-show').classList.remove('hidden');
+                
+                saveToLocal();
+                fetchNextDueCard();
+            }
+        }
+
+        function updateReviewUI() {
+            updateDashboardCounters();
+            if (!currentCard) {
+                document.getElementById('card-container').classList.add('hidden');
+                document.getElementById('empty-state').classList.remove('hidden');
+                document.getElementById('action-buttons').classList.add('hidden');
+                return;
+            }
+            document.getElementById('card-container').classList.remove('hidden');
+            document.getElementById('empty-state').classList.add('hidden');
+            document.getElementById('action-buttons').classList.remove('hidden');
+
+            document.getElementById('card-front-text').innerText = currentCard.front;
+            document.getElementById('card-back-front-word').innerText = currentCard.front;
+            document.getElementById('card-back-text').innerText = currentCard.back;
+            
+            if (currentCard.sentence) {
+                document.getElementById('hint-sentence').innerText = currentCard.sentence;
+                document.getElementById('card-back-sentence').innerText = currentCard.sentence;
+                document.getElementById('card-back-translation').innerText = currentCard.translation || '';
+                document.getElementById('back-sentence-box').classList.remove('hidden');
+            } else {
+                document.getElementById('back-sentence-box').classList.add('hidden');
+            }
+            document.getElementById('hint-text-box').classList.add('hidden');
+            document.getElementById('btn-show-hint').classList.remove('hidden');
+            document.getElementById('card-meta-info').innerText = "稳定性(天): " + currentCard.stability.toFixed(1) + " | 难度: " + currentCard.difficulty.toFixed(1);
+        }
+
+        function toggleHint(e) {
+            e.stopPropagation();
+            document.getElementById('hint-text-box').classList.remove('hidden');
+            document.getElementById('btn-show-hint').classList.add('hidden');
+        }
+
+        function changeAccent(val) { currentAccent = val; localStorage.setItem('anki_pro_accent', val); } 
+
+        function speakCurrentWord(e) {
+            if (e) e.stopPropagation();
+            if (!currentCard || isTtsLocked) return;
+            
+            isTtsLocked = true;
+            window.speechSynthesis.cancel(); 
+
+            var u = new SpeechSynthesisUtterance(currentCard.front);
+            u.lang = currentAccent;
+            u.rate = 0.85; // 针对移动端喇叭优化，发音略微放慢以听清音节
+            
+            u.onend = function() { isTtsLocked = false; };
+            u.onerror = function() { isTtsLocked = false; };
+            window.speechSynthesis.speak(u);
+        }
+
+        // 适配 iOS 端的 Web 级高兼容导出/原生分享机制
+        function exportDataBackup() {
+            if (cards.length === 0) return alert('📦 词库暂无卡片数据！');
+            var jsonStr = JSON.stringify(cards, null, 2);
+            
+            // 优先尝试调用 iOS 原生底层 Share Sheets（能直接唤起微信、系统文件保存）
+            if (navigator.share) {
+                var file = new File([jsonStr], "ankipro_backup.json", {type: "application/json"});
+                navigator.share({
+                    files: [file],
+                    title: 'Anki 词库备份',
+                    text: '您的 FSRS 学习词库进度备份档案'
+                }).catch(function(){});
+            } else {
+                // 如果在某些内嵌浏览器内不支持 share，则通过弹窗引导复制
+                var textWindow = window.open();
+                if(textWindow) {
+                    textWindow.document.write('<pre>' + jsonStr + '</pre>');
+                } else {
+                    alert("请备份以下全部文本:\n\n" + jsonStr.slice(0,300) + "\n\n...(由于iOS浏览器限制，请长按文本复制)");
+                }
+            }
+        }
+
+        function clearAllData() {
+            if (confirm('⚠️ 确定要清空全量卡片数据吗？操作不可逆！')) {
+                cards = []; lastReviewedCardLog = null; saveToLocal(); renderManageList(); switchView('review');
+            }
+        }
+
+        function renderManageList() {
+            var q = document.getElementById('search-word').value.toLowerCase().trim();
+            var container = document.getElementById('words-list'); container.innerHTML = '';
+            var filtered = cards.filter(function(c) {
+                return c.front.toLowerCase().indexOf(q) !== -1 || c.back.toLowerCase().indexOf(q) !== -1;
+            });
+            if (filtered.length === 0) {
+                container.innerHTML = '<div class="text-center text-xs text-slate-500 py-8">没有找到匹配的词条</div>'; return;
+            }
+            for (var i = 0; i < filtered.length; i++) {
+                var c = filtered[i]; var div = document.createElement('div');
+                div.className = "bg-slate-850 p-3 rounded-xl border border-slate-700 shadow-sm text-xs flex justify-between items-start";
+                div.innerHTML = '<div><b class="text-slate-200 text-sm">' + c.front + '</b><p class="text-slate-400 mt-0.5">' + c.back + '</p></div>' +
+                                '<button class="text-rose-400 font-bold ml-2" onclick="deleteCard(' + c.id + ')">删除</button>';
+                container.appendChild(div);
+            }
+        }
+
+        function deleteCard(id) {
+            cards = cards.filter(function(c) { return c.id !== id; });
+            saveToLocal(); renderManageList();
+        }
+
+        function initKeyboardShortcuts() {
+            document.addEventListener('keydown', function(event) {
+                if (document.activeElement.tagName === 'TEXTAREA' || document.activeElement.tagName === 'INPUT') return;
+                if (!currentCard) return;
+                var key = event.key;
+                if (!isFlipped) {
+                    if (key === ' ' || key === 'Enter') { event.preventDefault(); flipCard(); }
+                } else {
+                    if (key === '1') handleJudge(1);
+                    else if (key === '2') handleJudge(2);
+                    else if (key === '3') handleJudge(3);
+                    else if (key === '4') handleJudge(4);
+                    else if (key === ' ') { event.preventDefault(); handleJudge(3); }
+                }
+            });
+        }
+    </script>
+</body>
+</html>
+        
